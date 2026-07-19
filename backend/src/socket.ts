@@ -7,6 +7,7 @@ const prisma = new PrismaClient();
 
 type JoinRoomPayload = {
   roomId: string;
+  username?: string;
 };
 
 type SignalPayload = {
@@ -16,6 +17,7 @@ type SignalPayload = {
 
 const rooms = new Map<string, string[]>();
 const socketToRoom = new Map<string, string>();
+const socketToUsername = new Map<string, string>();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -55,8 +57,10 @@ export const initSocket = (server: http.Server) => {
   io.on("connection", (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
-    socket.on("join-room", ({ roomId }: JoinRoomPayload) => {
-      console.log(`[socket] join-room from ${socket.id} for room ${roomId}`);
+    socket.on("join-room", ({ roomId, username }: JoinRoomPayload) => {
+      console.log(`[socket] join-room from ${socket.id} (${username || "anonymous"}) for room ${roomId}`);
+
+      socketToUsername.set(socket.id, username || "Guest");
 
       const existingRoom = socketToRoom.get(socket.id);
       if (existingRoom && existingRoom !== roomId) {
@@ -92,10 +96,20 @@ export const initSocket = (server: http.Server) => {
           const existingPeerId = members.find((memberId) => memberId !== socket.id);
 
           if (existingPeerId) {
+            const existingPeerUsername = socketToUsername.get(existingPeerId) || "Guest";
             console.log(
-              `[socket] notifying ${existingPeerId} that ${socket.id} joined room ${roomId}`,
+              `[socket] notifying ${existingPeerId} that ${socket.id} (${username || "Guest"}) joined room ${roomId}`,
             );
-            io.to(existingPeerId).emit("user-joined", socket.id);
+            // Notify existing peer of new peer's info
+            io.to(existingPeerId).emit("user-joined", {
+              id: socket.id,
+              username: username || "Guest",
+            });
+            // Notify joining peer of existing peer's info
+            socket.emit("peer-info", {
+              id: existingPeerId,
+              username: existingPeerUsername,
+            });
           }
         }
       });
@@ -158,6 +172,8 @@ export const initSocket = (server: http.Server) => {
       console.log(
         `[socket] ${socket.id} removed from room ${removed.roomId}; remaining: ${removed.remainingMembers.join(", ") || "(empty)"}`,
       );
+
+      socketToUsername.delete(socket.id);
 
       removed.remainingMembers.forEach((memberId) => {
         io.to(memberId).emit("user-left", socket.id);

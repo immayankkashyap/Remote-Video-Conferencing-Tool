@@ -9,9 +9,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
  * Bypassing the backend server for the file upload ensures no server CPU, memory,
  * or network congestion when processing large media recordings.
  */
-export async function uploadRecording(blob: Blob, mimeType: string): Promise<{ key: string }> {
+export async function uploadRecording(blob: Blob, mimeType: string, participantName?: string): Promise<{ key: string }> {
   // Step 1: Request signed upload URL from the backend
-  const urlParams = new URLSearchParams({ fileType: mimeType });
+  const urlParams = new URLSearchParams({ 
+    fileType: mimeType,
+    ...(participantName ? { participantName } : {})
+  });
   const getUrlResponse = await fetch(`${API_URL}/api/upload-url?${urlParams.toString()}`);
 
   if (!getUrlResponse.ok) {

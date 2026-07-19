@@ -17,10 +17,14 @@ uploadRouter.get("/upload-url", async (req, res) => {
     const mimeBase = fileType.split(";")[0] || "";
     const ext = mimeBase.split("/")[1] || "webm";
 
+    // Extract and sanitize participant name
+    const participantName = (req.query.participantName as string) || "guest";
+    const sanitizedName = participantName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
     // Generate unique key for Supabase Storage
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    const key = `${timestamp}-${randomId}.${ext}`;
+    const key = `${timestamp}-${randomId}_${sanitizedName}.${ext}`;
 
     // Create a signed upload URL that expires in 15 minutes (900 seconds)
     const { data, error } = await supabase.storage

@@ -113,7 +113,7 @@ export const useRecorder = (
           // We bypass our Express backend completely when uploading the actual raw video payload.
           // Routing gigabytes of video streams through a Node server causes performance bottlenecks,
           // high network cost, and memory bloating. Instead, we perform a PUT directly to the Supabase URL.
-          const { key } = await uploadRecording(combinedBlob, mimeType);
+          const { key } = await uploadRecording(combinedBlob, mimeType, participantName);
           
           if (sessionId) {
             await fetch("/api/recordings", {
