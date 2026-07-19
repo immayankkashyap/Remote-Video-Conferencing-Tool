@@ -1,2 +1,15 @@
 .agents/
 .codex/
+pw.txt
+prisma_password.txt
+
+# dependencies
+node_modules/
+
+# environments
+.env
+.env.*
+.env.local
+
+# system files
+.DS_Store

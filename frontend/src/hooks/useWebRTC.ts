@@ -26,7 +26,11 @@ type IncomingSignalPayload = {
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
 
-export const useWebRTC = (roomId: string) => {
+export const useWebRTC = (
+  roomId: string,
+  onRemoteStartRecord?: (sessionId: string) => void,
+  onRemoteStopRecord?: () => void
+) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connectionStatus, setConnectionStatus] =
@@ -226,6 +230,16 @@ export const useWebRTC = (roomId: string) => {
       setError("Room is full. Phase 1 only supports two peers per room.");
     });
 
+    socket.on("start-recording-trigger", (payload) => {
+      console.log("[frontend] received start-recording-trigger", payload);
+      onRemoteStartRecord?.(payload?.sessionId);
+    });
+
+    socket.on("stop-recording-trigger", () => {
+      console.log("[frontend] received stop-recording-trigger");
+      onRemoteStopRecord?.();
+    });
+
     socket.on("disconnect", () => {
       setConnectionStatus("disconnected");
     });
@@ -289,6 +303,14 @@ export const useWebRTC = (roomId: string) => {
     setIsCameraEnabled(nextEnabled);
   };
 
+  const hostStartRecording = (userId: string, sessionId: string) => {
+    socketRef.current?.emit("host-start-recording", { roomId, userId, sessionId });
+  };
+
+  const hostStopRecording = (userId: string) => {
+    socketRef.current?.emit("host-stop-recording", { roomId, userId });
+  };
+
   return {
     localStream,
     remoteStream,
@@ -299,5 +321,7 @@ export const useWebRTC = (roomId: string) => {
     error,
     toggleMic,
     toggleCamera,
+    hostStartRecording,
+    hostStopRecording,
   };
 };

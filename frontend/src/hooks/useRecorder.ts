@@ -20,7 +20,11 @@ const PREFERRED_MIME_TYPES = [
   "video/mp4",
 ];
 
-export const useRecorder = (localStream: MediaStream | null) => {
+export const useRecorder = (
+  localStream: MediaStream | null,
+  sessionId: number | null,
+  participantName: string = "Guest"
+) => {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [uploadedKey, setUploadedKey] = useState<string | null>(null);
@@ -105,17 +109,29 @@ export const useRecorder = (localStream: MediaStream | null) => {
           // Combine chunks into a single media Blob using the detected MIME type
           const combinedBlob = new Blob(chunksRef.current, { type: mimeType });
 
-          // Direct-to-R2 Upload:
+          // Direct-to-Supabase Upload:
           // We bypass our Express backend completely when uploading the actual raw video payload.
           // Routing gigabytes of video streams through a Node server causes performance bottlenecks,
-          // high network cost, and memory bloating. Instead, we perform a PUT directly to the R2 URL.
+          // high network cost, and memory bloating. Instead, we perform a PUT directly to the Supabase URL.
           const { key } = await uploadRecording(combinedBlob, mimeType);
           
+          if (sessionId) {
+            await fetch("/api/recordings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId,
+                participantName,
+                fileUrl: key,
+              }),
+            }).catch(e => console.error("Failed to save recording to DB", e));
+          }
+
           setUploadedKey(key);
           setRecordingStatus("uploaded");
         } catch (uploadErr: any) {
           console.error("Recording upload failed:", uploadErr);
-          setError(uploadErr.message || "Failed to upload recording directly to Cloudflare R2.");
+          setError(uploadErr.message || "Failed to upload recording directly to Supabase Storage.");
           setRecordingStatus("error");
           
           // NOTE: We keep chunksRef.current intact here. In case of network failure, the blob is

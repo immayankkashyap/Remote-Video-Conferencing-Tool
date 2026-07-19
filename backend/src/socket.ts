@@ -1,6 +1,9 @@
 import http from "http";
 
 import { Server } from "socket.io";
+import { PrismaClient } from "./generated/prisma";
+
+const prisma = new PrismaClient();
 
 type JoinRoomPayload = {
   roomId: string;
@@ -77,25 +80,25 @@ export const initSocket = (server: http.Server) => {
         members.push(socket.id);
       }
 
-      rooms.set(roomId, members);
-      socketToRoom.set(socket.id, roomId);
-      socket.join(roomId);
+        rooms.set(roomId, members);
+        socketToRoom.set(socket.id, roomId);
+        socket.join(roomId);
 
-      console.log(
-        `[socket] room ${roomId} members after join: ${members.join(", ") || "(empty)"}`,
-      );
+        console.log(
+          `[socket] room ${roomId} members after join: ${members.join(", ") || "(empty)"}`,
+        );
 
-      if (members.length === 2) {
-        const existingPeerId = members.find((memberId) => memberId !== socket.id);
+        if (members.length === 2) {
+          const existingPeerId = members.find((memberId) => memberId !== socket.id);
 
-        if (existingPeerId) {
-          console.log(
-            `[socket] notifying ${existingPeerId} that ${socket.id} joined room ${roomId}`,
-          );
-          io.to(existingPeerId).emit("user-joined", socket.id);
+          if (existingPeerId) {
+            console.log(
+              `[socket] notifying ${existingPeerId} that ${socket.id} joined room ${roomId}`,
+            );
+            io.to(existingPeerId).emit("user-joined", socket.id);
+          }
         }
-      }
-    });
+      });
 
     socket.on("signal", ({ to, data }: SignalPayload) => {
       console.log(`[socket] signal relay from ${socket.id} to ${to}`);
@@ -103,6 +106,44 @@ export const initSocket = (server: http.Server) => {
         from: socket.id,
         data,
       });
+    });
+
+    socket.on("host-start-recording", async ({ roomId, userId, sessionId }) => {
+      console.log(`[socket] host-start-recording request from ${socket.id} (user ${userId}) for room ${roomId}`);
+      try {
+        const room = await prisma.room.findUnique({
+          where: { slug: roomId },
+          select: { hostId: true }
+        });
+        
+        if (room && room.hostId === userId) {
+          console.log(`[socket] verified host for room ${roomId}, broadcasting start-recording-trigger`);
+          io.to(roomId).emit("start-recording-trigger", { sessionId });
+        } else {
+          console.warn(`[socket] unauthorized host-start-recording attempt by ${userId} for room ${roomId}`);
+        }
+      } catch (error) {
+        console.error(`[socket] error verifying host:`, error);
+      }
+    });
+
+    socket.on("host-stop-recording", async ({ roomId, userId }) => {
+      console.log(`[socket] host-stop-recording request from ${socket.id} (user ${userId}) for room ${roomId}`);
+      try {
+        const room = await prisma.room.findUnique({
+          where: { slug: roomId },
+          select: { hostId: true }
+        });
+        
+        if (room && room.hostId === userId) {
+          console.log(`[socket] verified host for room ${roomId}, broadcasting stop-recording-trigger`);
+          io.to(roomId).emit("stop-recording-trigger");
+        } else {
+          console.warn(`[socket] unauthorized host-stop-recording attempt by ${userId} for room ${roomId}`);
+        }
+      } catch (error) {
+        console.error(`[socket] error verifying host:`, error);
+      }
     });
 
     socket.on("disconnect", (reason) => {

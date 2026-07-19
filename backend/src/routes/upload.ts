@@ -1,7 +1,5 @@
 import { Router } from "express";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { s3Client, R2_BUCKET_NAME } from "../config/r2";
+import { supabase, SUPABASE_BUCKET_NAME } from "../config/supabase";
 
 export const uploadRouter = Router();
 
@@ -19,26 +17,30 @@ uploadRouter.get("/upload-url", async (req, res) => {
     const mimeBase = fileType.split(";")[0] || "";
     const ext = mimeBase.split("/")[1] || "webm";
 
-    // Generate unique key for Cloudflare R2
+    // Generate unique key for Supabase Storage
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
-    const key = `recordings/${timestamp}-${randomId}.${ext}`;
+    const key = `${timestamp}-${randomId}.${ext}`;
 
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      ContentType: fileType,
-    });
+    // Create a signed upload URL that expires in 15 minutes (900 seconds)
+    const { data, error } = await supabase.storage
+      .from(SUPABASE_BUCKET_NAME)
+      .createSignedUploadUrl(key);
 
-    // Create a presigned PUT URL that expires in 15 minutes (900 seconds)
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+    if (error) {
+      throw error;
+    }
 
-    console.log(`[backend] Generated presigned upload URL for key: ${key}`);
-    res.json({ uploadUrl, key });
+    if (!data || !data.signedUrl) {
+      throw new Error("Failed to retrieve signed upload URL from Supabase Storage");
+    }
+
+    console.log(`[backend] Generated Supabase signed upload URL for key: ${key}`);
+    res.json({ uploadUrl: data.signedUrl, key });
   } catch (error: any) {
-    console.error("[backend] Error generating presigned upload URL:", error);
+    console.error("[backend] Error generating signed upload URL:", error);
     res.status(500).json({
-      error: "Failed to generate presigned upload URL",
+      error: "Failed to generate signed upload URL",
       details: error.message || error,
     });
   }
