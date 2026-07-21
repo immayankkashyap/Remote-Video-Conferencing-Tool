@@ -18,6 +18,8 @@ type SignalPayload = {
 const rooms = new Map<string, string[]>();
 const socketToRoom = new Map<string, string>();
 const socketToUsername = new Map<string, string>();
+const socketToEmail = new Map<string, string>();
+const emailToSocket = new Map<string, string>();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -160,6 +162,24 @@ export const initSocket = (server: http.Server) => {
       }
     });
 
+    socket.on("dashboard-connect", ({ email }: { email: string }) => {
+      if (email) {
+        console.log(`[socket] dashboard-connect: ${email} -> ${socket.id}`);
+        socketToEmail.set(socket.id, email);
+        emailToSocket.set(email, socket.id);
+      }
+    });
+
+    socket.on("notify-invite", ({ inviteeEmail, inviteData }: { inviteeEmail: string, inviteData: any }) => {
+      console.log(`[socket] notify-invite for ${inviteeEmail}`);
+      const targetSocketId = emailToSocket.get(inviteeEmail);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("incoming-invite", inviteData);
+      } else {
+        console.log(`[socket] user ${inviteeEmail} not online`);
+      }
+    });
+
     socket.on("disconnect", (reason) => {
       console.log(`[socket] disconnect: ${socket.id} (${reason})`);
 
@@ -173,7 +193,11 @@ export const initSocket = (server: http.Server) => {
         `[socket] ${socket.id} removed from room ${removed.roomId}; remaining: ${removed.remainingMembers.join(", ") || "(empty)"}`,
       );
 
-      socketToUsername.delete(socket.id);
+      const email = socketToEmail.get(socket.id);
+      if (email) {
+        emailToSocket.delete(email);
+        socketToEmail.delete(socket.id);
+      }
 
       removed.remainingMembers.forEach((memberId) => {
         io.to(memberId).emit("user-left", socket.id);
