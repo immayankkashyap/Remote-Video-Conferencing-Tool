@@ -98,10 +98,16 @@ export const useWebRTC = (
     setRemoteStream(remoteMediaStream);
 
     // STUN helps peers discover their public-facing network addresses.
-    // TURN is intentionally omitted in Phase 1, but will be required later
-    // for users behind restrictive NATs or corporate firewalls.
+    // TURN provides a relay fallback for users behind restrictive NATs or corporate firewalls.
     const peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }, // Free Google STUN
+        {
+          urls: "turn:openrelay.metered.ca:80",   // Metered TURN Relay
+          username: "openrelayproject",
+          credential: "openrelayprojectsecret"
+        }
+      ],
     });
     peerConnectionRef.current = peerConnection;
 
@@ -383,6 +389,10 @@ export const useWebRTC = (
     socketRef.current?.emit("host-stop-recording", { roomId, userId });
   };
 
+  const notifyInvite = (inviteeEmail: string, inviteData: any) => {
+    socketRef.current?.emit("notify-invite", { inviteeEmail, inviteData });
+  };
+
   return {
     localStream,
     remoteStream,
@@ -396,5 +406,6 @@ export const useWebRTC = (
     toggleCamera,
     hostStartRecording,
     hostStopRecording,
+    notifyInvite,
   };
 };

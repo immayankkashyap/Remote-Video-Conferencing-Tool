@@ -9,4 +9,4 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
-export const SUPABASE_BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "recordings";
+export const SUPABASE_BUCKET_NAME = process.env.SUPABASE_BUCKET_NAME || "RiverSide Clone";

@@ -62,6 +62,11 @@ export default function RoomPage() {
   const [guestName, setGuestName] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Invite States
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<{ text: string, type: "success" | "error" } | null>(null);
+
   useEffect(() => {
     // Fetch room details
     fetch(`/api/rooms/${roomId}/details`)
@@ -113,6 +118,7 @@ export default function RoomPage() {
     toggleCamera,
     hostStartRecording,
     hostStopRecording,
+    notifyInvite,
   } = useWebRTC(
     roomId,
     hasEnteredLobby,
@@ -163,6 +169,34 @@ export default function RoomPage() {
     navigator.clipboard.writeText(inviteUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setIsInviting(true);
+    setInviteMessage(null);
+    try {
+      const res = await fetch("/api/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId, email: inviteEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteMessage({ text: data.error || "Failed to send invite", type: "error" });
+      } else {
+        setInviteMessage({ text: "Invite sent successfully!", type: "success" });
+        setInviteEmail("");
+        if (data.invitation) {
+          notifyInvite(data.invitation.inviteeEmail, data.invitation);
+        }
+      }
+    } catch (err) {
+      setInviteMessage({ text: "An unexpected error occurred.", type: "error" });
+    } finally {
+      setIsInviting(false);
+    }
   };
 
   // If Guest hasn't clicked 'Join Studio', show Lobby/Preview View
@@ -278,6 +312,30 @@ export default function RoomPage() {
               {copied ? "Copied Link!" : "Copy Invite Link"}
             </button>
 
+            {isHost && (
+              <form onSubmit={handleInviteMember} className="relative flex items-center">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Invite by email..."
+                  className="w-48 rounded-l-xl border border-r-0 border-slate-700 bg-slate-900/50 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isInviting || !inviteEmail.trim()}
+                  className="rounded-r-xl border border-l-0 border-cyan-500 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-400 transition hover:bg-cyan-500 hover:text-slate-950 disabled:opacity-50"
+                >
+                  {isInviting ? "..." : "Send"}
+                </button>
+                {inviteMessage && (
+                  <div className={`absolute -bottom-8 left-0 text-xs font-medium ${inviteMessage.type === "success" ? "text-emerald-400" : "text-rose-400"}`}>
+                    {inviteMessage.text}
+                  </div>
+                )}
+              </form>
+            )}
+
             <button
               type="button"
               onClick={toggleMic}
@@ -296,7 +354,21 @@ export default function RoomPage() {
             </button>
             <button
               type="button"
-              onClick={() => router.push("/")}
+              onClick={() => {
+                if (
+                  isHost &&
+                  (recordingStatus === "recording" || recordingStatus === "uploading")
+                ) {
+                  if (
+                    !window.confirm(
+                      "A recording is currently in progress or uploading. If you leave now, the recording might be lost. Are you sure you want to leave?"
+                    )
+                  ) {
+                    return;
+                  }
+                }
+                router.push("/");
+              }}
               className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-white"
             >
               Leave Room

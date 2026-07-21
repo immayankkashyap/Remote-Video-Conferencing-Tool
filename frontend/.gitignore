@@ -12,6 +12,7 @@ out/
 .env.test.local
 .env.production.local
 .env*.local
+!.env.example
 
 # debug logs
 npm-debug.log*

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import { io, type Socket } from "socket.io-client";
 
 export default function LobbyPage() {
   const router = useRouter();
@@ -25,6 +26,10 @@ export default function LobbyPage() {
   const [isCreatingStudio, setIsCreatingStudio] = useState(false);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
+  // Invites State
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [socket, setSocket] = useState<Socket | null>(null);
+
   const handleCopyInvite = (slug: string) => {
     const inviteUrl = `${window.location.origin}/room/${slug}`;
     navigator.clipboard.writeText(inviteUrl);
@@ -36,7 +41,7 @@ export default function LobbyPage() {
   const isLoading = status === "loading";
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && session?.user?.email) {
       setIsFetchingRooms(true);
       fetch("/api/rooms")
         .then((res) => res.json())
@@ -45,8 +50,52 @@ export default function LobbyPage() {
         })
         .catch(console.error)
         .finally(() => setIsFetchingRooms(false));
+
+      fetch("/api/invitations")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.invitations) setPendingInvites(data.invitations);
+        })
+        .catch(console.error);
+
+      const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
+      const newSocket = io(SOCKET_URL);
+      
+      const userEmail = session.user.email;
+      newSocket.on("connect", () => {
+        newSocket.emit("dashboard-connect", { email: userEmail });
+      });
+
+      newSocket.on("incoming-invite", (inviteData: any) => {
+        setPendingInvites((prev) => [inviteData, ...prev]);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, session?.user?.email]);
+
+  const handleRespondToInvite = async (inviteId: string, status: "ACCEPTED" | "DECLINED") => {
+    try {
+      const res = await fetch(`/api/invitations/${inviteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPendingInvites((prev) => prev.filter((inv) => inv.id !== inviteId));
+        if (status === "ACCEPTED" && data.invitation?.room?.slug) {
+          router.push(`/room/${data.invitation.room.slug}`);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +158,25 @@ export default function LobbyPage() {
       console.error(err);
     } finally {
       setIsCreatingStudio(false);
+    }
+  };
+
+  const handleDeleteRecording = async (recordingId: number) => {
+    try {
+      const res = await fetch(`/api/recordings/${recordingId}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setRooms((prevRooms) => prevRooms.map((room) => ({
+          ...room,
+          callSessions: room.callSessions?.map((session: any) => ({
+            ...session,
+            recordings: session.recordings?.filter((r: any) => r.id !== recordingId)
+          }))
+        })));
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -276,6 +344,44 @@ export default function LobbyPage() {
         </section>
       ) : (
         <section className="relative z-10 w-full max-w-6xl flex flex-col gap-10 transition-all duration-300 pt-8">
+          
+          {/* Pending Invites Notification Center */}
+          {pendingInvites.length > 0 && (
+            <div className="flex flex-col gap-4">
+              {pendingInvites.map((invite) => (
+                <div key={invite.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-cyan-500/30 bg-cyan-950/40 p-4 shadow-lg shadow-cyan-900/20 backdrop-blur-md">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-400">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-300">
+                        <span className="font-semibold text-white">{invite.sender?.name || "A user"}</span> has invited you to join <span className="font-semibold text-white">{invite.room?.name || "a studio"}</span>
+                      </p>
+                      <p className="text-xs text-slate-500">{new Date(invite.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleRespondToInvite(invite.id, "DECLINED")}
+                      className="rounded-lg px-4 py-2 text-sm font-medium text-slate-400 transition hover:bg-slate-800/50 hover:text-slate-200"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={() => handleRespondToInvite(invite.id, "ACCEPTED")}
+                      className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+                    >
+                      Join Room
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Dashboard Header */}
           <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl">
             <div>
@@ -412,45 +518,61 @@ export default function LobbyPage() {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="border-b border-slate-800 text-xs uppercase bg-slate-950/40">
-                      <tr>
-                        <th className="px-4 py-3 font-medium text-slate-400">Date</th>
-                        <th className="px-4 py-3 font-medium text-slate-400">Studio</th>
-                        <th className="px-4 py-3 font-medium text-slate-400">Participant</th>
-                        <th className="px-4 py-3 font-medium text-slate-400 text-right">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {allRecordings.map((rec: any) => (
-                        <tr key={rec.id} className="transition hover:bg-slate-800/30">
-                          <td className="whitespace-nowrap px-4 py-4">
-                            {new Date(rec.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                            <div className="text-xs text-slate-500 mt-0.5">{new Date(rec.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</div>
-                          </td>
-                          <td className="px-4 py-4 font-medium text-slate-200">{rec.roomName}</td>
-                          <td className="px-4 py-4">
-                            <span className="inline-flex items-center rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-slate-300 ring-1 ring-inset ring-slate-700/50">
-                              {rec.participantName}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <a
-                              href={`/api/recordings/${rec.id}/download`}
-                              target="_blank"
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-400 transition hover:bg-cyan-500 hover:text-slate-950"
-                            >
-                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                              </svg>
-                              Download
-                            </a>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 overflow-y-auto pr-2 custom-scrollbar">
+                  {allRecordings.map((rec: any) => (
+                    <div key={rec.id} className="group flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/50 transition hover:border-slate-700 hover:bg-slate-900/80">
+                      <a href={`/api/recordings/${rec.id}/download`} target="_blank" className="relative block aspect-video w-full bg-black">
+                        <video
+                          src={`/api/recordings/${rec.id}/download`}
+                          preload="metadata"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLVideoElement).style.display = 'none';
+                          }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                          <svg className="h-12 w-12 text-white/80" fill="currentColor" viewBox="0 0 24 24">
+                             <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      </a>
+                      
+                      <div className="flex flex-col gap-3 p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-medium text-slate-200 line-clamp-1">{rec.roomName}</h3>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {new Date(rec.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(rec.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <span className="inline-flex items-center rounded-md bg-slate-800 px-2 py-1 text-[10px] font-medium text-slate-300 ring-1 ring-inset ring-slate-700/50">
+                            {rec.participantName}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 mt-1">
+                          <a
+                            href={`/api/recordings/${rec.id}/download?action=download`}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-400 transition hover:bg-cyan-500 hover:text-slate-950"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download
+                          </a>
+                          <button
+                            onClick={() => handleDeleteRecording(rec.id)}
+                            className="flex items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-rose-400 transition hover:bg-rose-500 hover:text-slate-950"
+                            title="Delete Recording"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

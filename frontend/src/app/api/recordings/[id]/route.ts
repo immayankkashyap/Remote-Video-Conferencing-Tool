@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { supabase, SUPABASE_BUCKET_NAME } from "@/lib/supabase";
 
-export async function GET(
+export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -15,9 +14,6 @@ export async function GET(
 
     const resolvedParams = await params;
     const { id } = resolvedParams;
-    const { searchParams } = new URL(req.url);
-    const action = searchParams.get("action");
-    const isDownload = action === "download";
 
     const recording = await prisma.recording.findUnique({
       where: { id: Number(id) },
@@ -39,20 +35,13 @@ export async function GET(
       return NextResponse.json({ error: "Forbidden: You are not the host of this room." }, { status: 403 });
     }
 
-    const { data, error } = await supabase.storage
-      .from(SUPABASE_BUCKET_NAME)
-      .createSignedUrl(recording.fileUrl, 3600, {
-        download: isDownload,
-      });
+    await prisma.recording.delete({
+      where: { id: Number(id) }
+    });
 
-    if (error || !data || !data.signedUrl) {
-      console.error("Supabase createSignedUrl error:", error);
-      return NextResponse.json({ error: "Failed to generate download URL" }, { status: 500 });
-    }
-
-    return NextResponse.redirect(data.signedUrl);
+    return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("GET /api/recordings/[id]/download error:", error);
+    console.error("DELETE /api/recordings/[id] error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

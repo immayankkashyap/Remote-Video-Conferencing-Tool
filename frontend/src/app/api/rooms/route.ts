@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { supabase, SUPABASE_BUCKET_NAME } from "@/lib/supabase";
 
 export async function GET() {
   try {
@@ -24,6 +25,41 @@ export async function GET() {
         id: "desc",
       }
     });
+
+    // Check which videos are still available in the supabase bucket
+    const { data: bucketFiles, error } = await supabase.storage
+      .from(SUPABASE_BUCKET_NAME)
+      .list();
+
+    if (!error && bucketFiles && bucketFiles.length > 0) {
+      const bucketFileNames = new Set(bucketFiles.map(f => f.name));
+      const recordingsToDelete: number[] = [];
+
+      rooms.forEach(room => {
+        room.callSessions.forEach(session => {
+          session.recordings.forEach(rec => {
+            // If the file is not in the bucket, mark it for deletion
+            if (!bucketFileNames.has(rec.fileUrl)) {
+              recordingsToDelete.push(rec.id);
+            }
+          });
+        });
+      });
+
+      if (recordingsToDelete.length > 0) {
+        // Remove from database
+        await prisma.recording.deleteMany({
+          where: { id: { in: recordingsToDelete } }
+        });
+
+        // Remove from the response object
+        rooms.forEach(room => {
+          room.callSessions.forEach(session => {
+            session.recordings = session.recordings.filter(rec => !recordingsToDelete.includes(rec.id));
+          });
+        });
+      }
+    }
 
     return NextResponse.json({ rooms });
   } catch (error: any) {

@@ -8,8 +8,9 @@ node_modules/
 
 # environments
 .env
-.env.*
 .env.local
+.env.*.local
+!.env.example
 
 # system files
 .DS_Store
