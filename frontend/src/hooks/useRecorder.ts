@@ -83,6 +83,16 @@ export const useRecorder = (
    * Starts local recording of the active local media stream.
    */
   const startRecording = () => {
+    if (recordingStatus === "recording" || recordingStatus === "stopping" || recordingStatus === "uploading") {
+      console.warn(`startRecording ignored: status is currently "${recordingStatus}"`);
+      return;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      console.warn("MediaRecorder is already active.");
+      return;
+    }
+
     setError(null);
     setUploadedKey(null);
 

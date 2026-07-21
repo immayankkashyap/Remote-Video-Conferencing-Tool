@@ -142,7 +142,7 @@ export const initSocket = (server: http.Server) => {
         
         if (room && room.hostId === userId) {
           console.log(`[socket] verified host for room ${roomId}, broadcasting start-recording-trigger`);
-          io.to(roomId).emit("start-recording-trigger", { sessionId });
+          socket.to(roomId).emit("start-recording-trigger", { sessionId });
         } else {
           console.warn(`[socket] unauthorized host-start-recording attempt by ${userId} for room ${roomId}`);
         }
@@ -161,7 +161,7 @@ export const initSocket = (server: http.Server) => {
         
         if (room && room.hostId === userId) {
           console.log(`[socket] verified host for room ${roomId}, broadcasting stop-recording-trigger`);
-          io.to(roomId).emit("stop-recording-trigger");
+          socket.to(roomId).emit("stop-recording-trigger");
         } else {
           console.warn(`[socket] unauthorized host-stop-recording attempt by ${userId} for room ${roomId}`);
         }

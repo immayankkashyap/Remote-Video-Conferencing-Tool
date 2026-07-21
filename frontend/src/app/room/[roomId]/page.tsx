@@ -124,11 +124,13 @@ export default function RoomPage() {
     hasEnteredLobby,
     isHost ? (session?.user?.name || "Host") : guestName,
     (incomingSessionId) => {
+      if (isHost) return;
       // triggered by host on socket
       setSessionId(Number(incomingSessionId));
       startRecording();
     },
     () => {
+      if (isHost) return;
       // triggered by host on socket
       stopRecording();
     }
