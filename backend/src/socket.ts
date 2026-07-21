@@ -36,6 +36,15 @@ const removeSocketFromRoom = (socketId: string) => {
 
   if (nextMembers.length === 0) {
     rooms.delete(roomId);
+    
+    // Set expiresAt to 1 hour from now
+    const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+    prisma.room.update({
+      where: { slug: roomId },
+      data: { expiresAt: oneHourFromNow }
+    }).catch(err => {
+      console.error(`[socket] failed to set expiresAt for empty room ${roomId}:`, err);
+    });
   } else {
     rooms.set(roomId, nextMembers);
   }
@@ -97,6 +106,14 @@ export const initSocket = (server: http.Server) => {
         rooms.set(roomId, members);
         socketToRoom.set(socket.id, roomId);
         socket.join(roomId);
+
+        // Clear expiresAt when someone joins/uses the room
+        prisma.room.update({
+          where: { slug: roomId },
+          data: { expiresAt: null }
+        }).catch(err => {
+          console.error(`[socket] failed to clear expiresAt for room ${roomId}:`, err);
+        });
 
         console.log(
           `[socket] room ${roomId} members after join: ${members.join(", ") || "(empty)"}`,
