@@ -21,7 +21,8 @@ const socketToUsername = new Map<string, string>();
 const socketToEmail = new Map<string, string>();
 const emailToSocket = new Map<string, string>();
 
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+const FRONTEND_URL = rawFrontendUrl.replace(/\/+$/, "");
 
 const removeSocketFromRoom = (socketId: string) => {
   const roomId = socketToRoom.get(socketId);
@@ -50,7 +51,14 @@ const removeSocketFromRoom = (socketId: string) => {
 export const initSocket = (server: http.Server) => {
   const io = new Server(server, {
     cors: {
-      origin: FRONTEND_URL,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const cleanOrigin = origin.replace(/\/+$/, "");
+        if (cleanOrigin === FRONTEND_URL) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       methods: ["GET", "POST"],
       credentials: true,
     },
