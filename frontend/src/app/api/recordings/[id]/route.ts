@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { supabase, SUPABASE_BUCKET_NAME } from "@/lib/supabase";
 
 export async function DELETE(
   req: Request,
@@ -33,6 +34,11 @@ export async function DELETE(
     // Verify the user is the host of the room where this recording took place
     if (recording.session.room.hostId !== session.user.id) {
       return NextResponse.json({ error: "Forbidden: You are not the host of this room." }, { status: 403 });
+    }
+
+    // Delete the file object from Supabase Storage bucket
+    if (recording.fileUrl) {
+      await supabase.storage.from(SUPABASE_BUCKET_NAME).remove([recording.fileUrl]);
     }
 
     await prisma.recording.delete({

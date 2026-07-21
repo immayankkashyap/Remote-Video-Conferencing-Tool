@@ -14,8 +14,9 @@ export type RecordingStatus =
 // A prioritized list of MIME types/codecs to check.
 // We prefer high-quality video formats, falling back dynamically depending on browser support.
 const PREFERRED_MIME_TYPES = [
-  "video/webm;codecs=vp9",
-  "video/webm;codecs=vp8",
+  "video/webm;codecs=vp9,opus",
+  "video/webm;codecs=vp8,opus",
+  "video/webm;codecs=h264,opus",
   "video/webm",
   "video/mp4",
 ];
