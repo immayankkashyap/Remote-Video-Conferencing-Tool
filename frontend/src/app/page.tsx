@@ -32,6 +32,7 @@ export default function LobbyPage() {
 
   // UI States
   const [showAllRecordings, setShowAllRecordings] = useState(false);
+  const [showAllRooms, setShowAllRooms] = useState(false);
 
   const handleCopyInvite = (slug: string) => {
     const inviteUrl = `${window.location.origin}/room/${slug}`;
@@ -196,6 +197,7 @@ export default function LobbyPage() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const displayedRecordings = showAllRecordings ? allRecordings : allRecordings.slice(0, 4);
+  const displayedRooms = showAllRooms ? rooms : rooms.slice(0, 5);
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 py-12">
@@ -454,7 +456,17 @@ export default function LobbyPage() {
 
               {/* Your Studios */}
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl flex-1">
-                <h2 className="text-lg font-semibold text-white mb-4">Your Studios</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-white">Your Studios</h2>
+                  {rooms.length > 5 && (
+                    <button
+                      onClick={() => setShowAllRooms(!showAllRooms)}
+                      className="text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors"
+                    >
+                      {showAllRooms ? "Show Less" : `View All (${rooms.length})`}
+                    </button>
+                  )}
+                </div>
                 {isFetchingRooms ? (
                   <div className="flex justify-center py-6">
                     <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-400" />
@@ -465,7 +477,7 @@ export default function LobbyPage() {
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {rooms.map((room) => (
+                    {displayedRooms.map((room) => (
                       <div key={room.id} className="group flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/50 p-4 transition hover:border-slate-700 hover:bg-slate-900/80">
                         <div>
                           <h3 className="font-medium text-slate-200">{room.name}</h3>
