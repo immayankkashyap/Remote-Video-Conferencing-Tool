@@ -4,8 +4,8 @@ import { SessionProvider } from "next-auth/react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Riverside Clone",
-  description: "Phase 1 peer-to-peer video conferencing demo",
+  title: "Podium - Remote Video & Studio Recording",
+  description: "High-quality remote podcasting and video recording studio",
 };
 
 export default function RootLayout({
