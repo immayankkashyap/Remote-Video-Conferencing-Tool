@@ -30,6 +30,9 @@ export default function LobbyPage() {
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
 
+  // UI States
+  const [showAllRecordings, setShowAllRecordings] = useState(false);
+
   const handleCopyInvite = (slug: string) => {
     const inviteUrl = `${window.location.origin}/room/${slug}`;
     navigator.clipboard.writeText(inviteUrl);
@@ -191,6 +194,8 @@ export default function LobbyPage() {
       )
     )
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const displayedRecordings = showAllRecordings ? allRecordings : allRecordings.slice(0, 4);
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 py-12">
@@ -499,7 +504,17 @@ export default function LobbyPage() {
 
             {/* Right Column: Recordings */}
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl lg:col-span-2 flex flex-col h-full">
-              <h2 className="text-lg font-semibold text-white mb-6">Past Recording Sessions</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-white">Past Recording Sessions</h2>
+                {allRecordings.length > 4 && (
+                  <button
+                    onClick={() => setShowAllRecordings(!showAllRecordings)}
+                    className="text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors"
+                  >
+                    {showAllRecordings ? "Show Less" : `View All (${allRecordings.length})`}
+                  </button>
+                )}
+              </div>
               
               {isFetchingRooms ? (
                 <div className="flex justify-center py-12 flex-1 items-center">
@@ -519,7 +534,7 @@ export default function LobbyPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 overflow-y-auto pr-2 custom-scrollbar">
-                  {allRecordings.map((rec: any) => (
+                  {displayedRecordings.map((rec: any) => (
                     <div key={rec.id} className="group flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/50 transition hover:border-slate-700 hover:bg-slate-900/80">
                       <a href={`/api/recordings/${rec.id}/download`} target="_blank" className="relative block aspect-video w-full bg-black">
                         <video

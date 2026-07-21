@@ -33,6 +33,18 @@ export const useRecorder = (
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   
+  // Create refs for sessionId and participantName to avoid stale closures in onstop
+  const sessionIdRef = useRef<number | null>(sessionId);
+  const participantNameRef = useRef<string>(participantName);
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    participantNameRef.current = participantName;
+  }, [participantName]);
+
   // NOTE ON MEMORY USAGE:
   // Recorded chunks are collected in a React useRef array to prevent unnecessary component re-renders
   // on every data flush. For very long recording sessions, buffering these chunks in memory could lead
@@ -114,15 +126,15 @@ export const useRecorder = (
           // We bypass our Express backend completely when uploading the actual raw video payload.
           // Routing gigabytes of video streams through a Node server causes performance bottlenecks,
           // high network cost, and memory bloating. Instead, we perform a PUT directly to the Supabase URL.
-          const { key } = await uploadRecording(combinedBlob, mimeType, participantName);
+          const { key } = await uploadRecording(combinedBlob, mimeType, participantNameRef.current);
           
-          if (sessionId) {
+          if (sessionIdRef.current) {
             await fetch("/api/recordings", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                sessionId,
-                participantName,
+                sessionId: sessionIdRef.current,
+                participantName: participantNameRef.current,
                 fileUrl: key,
               }),
             }).catch(e => console.error("Failed to save recording to DB", e));
