@@ -26,7 +26,13 @@ type IncomingSignalPayload = {
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
 
-export const useWebRTC = (roomId: string) => {
+export const useWebRTC = (
+  roomId: string,
+  hasJoined: boolean,
+  userName: string,
+  onRemoteStartRecord?: (sessionId: string) => void,
+  onRemoteStopRecord?: () => void
+) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connectionStatus, setConnectionStatus] =
@@ -35,6 +41,7 @@ export const useWebRTC = (roomId: string) => {
   const [isCameraEnabled, setIsCameraEnabled] = useState(true);
   const [roomFull, setRoomFull] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [peerName, setPeerName] = useState<string>("Peer");
 
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -42,8 +49,49 @@ export const useWebRTC = (roomId: string) => {
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const remoteSocketIdRef = useRef<string | null>(null);
 
+  const onRemoteStartRecordRef = useRef(onRemoteStartRecord);
+  const onRemoteStopRecordRef = useRef(onRemoteStopRecord);
+
+  useEffect(() => {
+    onRemoteStartRecordRef.current = onRemoteStartRecord;
+    onRemoteStopRecordRef.current = onRemoteStopRecord;
+  });
+
   useEffect(() => {
     let isDisposed = false;
+
+    if (!hasJoined) {
+      const ensureLocalMediaOnly = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+
+          if (isDisposed) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+          }
+
+          localStreamRef.current = stream;
+          setLocalStream(stream);
+          setIsMicEnabled(stream.getAudioTracks().every((track) => track.enabled));
+          setIsCameraEnabled(stream.getVideoTracks().every((track) => track.enabled));
+        } catch (mediaError) {
+          console.error("Failed to access local media in lobby", mediaError);
+          setError("Could not access camera or microphone.");
+        }
+      };
+
+      void ensureLocalMediaOnly();
+
+      return () => {
+        isDisposed = true;
+        localStreamRef.current?.getTracks().forEach((track) => track.stop());
+        localStreamRef.current = null;
+        setLocalStream(null);
+      };
+    }
 
     const remoteMediaStream = new MediaStream();
     remoteStreamRef.current = remoteMediaStream;
@@ -111,6 +159,8 @@ export const useWebRTC = (roomId: string) => {
     });
     socketRef.current = socket;
 
+    const isMediaReadyRef = { current: false };
+
     const ensureLocalMedia = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -131,6 +181,12 @@ export const useWebRTC = (roomId: string) => {
         stream.getTracks().forEach((track) => {
           peerConnection.addTrack(track, stream);
         });
+
+        isMediaReadyRef.current = true;
+        if (socket.connected) {
+          console.log("[frontend] emitting join-room (media ready first)");
+          socket.emit("join-room", { roomId, username: userName });
+        }
       } catch (mediaError) {
         console.error("Failed to access local media", mediaError);
         setError("Could not access camera or microphone.");
@@ -171,12 +227,25 @@ export const useWebRTC = (roomId: string) => {
       console.log("[frontend] socket connected", socket.id);
       setRoomFull(false);
       setConnectionStatus("waiting");
-      socket.emit("join-room", { roomId });
+      if (isMediaReadyRef.current) {
+        console.log("[frontend] emitting join-room (socket connected second)");
+        socket.emit("join-room", { roomId, username: userName });
+      }
     });
 
-    socket.on("user-joined", async (peerSocketId: string) => {
-      console.log("[frontend] user-joined", peerSocketId);
+    socket.on("user-joined", async (payload: { id: string; username: string } | string) => {
+      let peerSocketId: string;
+      let peerUsername = "Peer";
+      if (payload && typeof payload === "object") {
+        peerSocketId = payload.id;
+        peerUsername = payload.username;
+      } else {
+        peerSocketId = payload;
+      }
+
+      console.log("[frontend] user-joined", peerSocketId, peerUsername);
       remoteSocketIdRef.current = peerSocketId;
+      setPeerName(peerUsername);
       setConnectionStatus("connecting");
 
       // The existing peer creates the initial SDP offer when the second peer arrives.
@@ -190,6 +259,12 @@ export const useWebRTC = (roomId: string) => {
           sdp: offer,
         } satisfies SignalEnvelope,
       });
+    });
+
+    socket.on("peer-info", ({ id, username }: { id: string; username: string }) => {
+      console.log("[frontend] peer-info", id, username);
+      remoteSocketIdRef.current = id;
+      setPeerName(username);
     });
 
     socket.on("signal", async ({ from, data }: IncomingSignalPayload) => {
@@ -212,6 +287,7 @@ export const useWebRTC = (roomId: string) => {
     socket.on("user-left", (peerSocketId: string) => {
       console.log("[frontend] user-left", peerSocketId);
       remoteSocketIdRef.current = null;
+      setPeerName("Peer");
       setConnectionStatus("waiting");
 
       remoteStreamRef.current?.getTracks().forEach((track) => {
@@ -224,6 +300,16 @@ export const useWebRTC = (roomId: string) => {
       setRoomFull(true);
       setConnectionStatus("disconnected");
       setError("Room is full. Phase 1 only supports two peers per room.");
+    });
+
+    socket.on("start-recording-trigger", (payload) => {
+      console.log("[frontend] received start-recording-trigger", payload);
+      onRemoteStartRecordRef.current?.(payload?.sessionId);
+    });
+
+    socket.on("stop-recording-trigger", () => {
+      console.log("[frontend] received stop-recording-trigger");
+      onRemoteStopRecordRef.current?.();
     });
 
     socket.on("disconnect", () => {
@@ -255,7 +341,7 @@ export const useWebRTC = (roomId: string) => {
       remoteStreamRef.current = null;
       setRemoteStream(null);
     };
-  }, [roomId]);
+  }, [roomId, hasJoined, userName]);
 
   const toggleMic = () => {
     const stream = localStreamRef.current;
@@ -289,6 +375,14 @@ export const useWebRTC = (roomId: string) => {
     setIsCameraEnabled(nextEnabled);
   };
 
+  const hostStartRecording = (userId: string, sessionId: string) => {
+    socketRef.current?.emit("host-start-recording", { roomId, userId, sessionId });
+  };
+
+  const hostStopRecording = (userId: string) => {
+    socketRef.current?.emit("host-stop-recording", { roomId, userId });
+  };
+
   return {
     localStream,
     remoteStream,
@@ -297,7 +391,10 @@ export const useWebRTC = (roomId: string) => {
     isCameraEnabled,
     roomFull,
     error,
+    peerName,
     toggleMic,
     toggleCamera,
+    hostStartRecording,
+    hostStopRecording,
   };
 };

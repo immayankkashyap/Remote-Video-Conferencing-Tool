@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 type VideoGridProps = {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  peerName?: string;
 };
 
 type VideoPanelProps = {
@@ -58,7 +59,7 @@ function VideoPanel({
   );
 }
 
-export function VideoGrid({ localStream, remoteStream }: VideoGridProps) {
+export function VideoGrid({ localStream, remoteStream, peerName = "Peer" }: VideoGridProps) {
   return (
     <section className="grid gap-6 md:grid-cols-2">
       <VideoPanel
@@ -68,7 +69,7 @@ export function VideoGrid({ localStream, remoteStream }: VideoGridProps) {
         placeholder="Camera and microphone access are being requested."
       />
       <VideoPanel
-        label="Peer"
+        label={peerName}
         stream={remoteStream}
         placeholder="Waiting for another peer to join the room."
       />
