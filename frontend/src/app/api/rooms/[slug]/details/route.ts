@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { supabase, SUPABASE_BUCKET_NAME } from "@/lib/supabase";
 
 export async function GET(
   req: Request,
@@ -21,6 +22,28 @@ export async function GET(
     });
 
     if (!room) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
+    }
+
+    if (room.expiresAt && room.expiresAt <= new Date()) {
+      const fileUrls: string[] = [];
+      const callSessions = await prisma.callSession.findMany({
+        where: { roomId: room.id },
+        include: { recordings: true }
+      });
+      callSessions.forEach(sess => {
+        sess.recordings.forEach(rec => {
+          if (rec.fileUrl) fileUrls.push(rec.fileUrl);
+        });
+      });
+      if (fileUrls.length > 0) {
+        try {
+          await supabase.storage.from(SUPABASE_BUCKET_NAME).remove(fileUrls);
+        } catch (err) {
+          console.error("Failed to delete expired files from Supabase Storage:", err);
+        }
+      }
+      await prisma.room.delete({ where: { id: room.id } });
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
     }
 

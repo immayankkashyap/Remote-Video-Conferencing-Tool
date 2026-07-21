@@ -79,7 +79,13 @@ export async function GET(req: Request) {
     const invitations = await prisma.invitation.findMany({
       where: {
         inviteeEmail: session.user.email,
-        status: "PENDING"
+        status: "PENDING",
+        room: {
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } }
+          ]
+        }
       },
       include: {
         room: true,

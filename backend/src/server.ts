@@ -7,6 +7,7 @@ import express from "express";
 
 import { initSocket } from "./socket";
 import { uploadRouter } from "./routes/upload";
+import { cleanupExpiredRooms } from "./utils/cleanup";
 
 
 const app = express();
@@ -38,6 +39,10 @@ app.get("/health", (_request, response) => {
 });
 
 initSocket(server);
+
+// Run cleanup immediately on server startup, and then every 5 minutes
+cleanupExpiredRooms();
+setInterval(cleanupExpiredRooms, 5 * 60 * 1000);
 
 server.listen(port, () => {
   console.log(`Backend server listening on http://localhost:${port}`);

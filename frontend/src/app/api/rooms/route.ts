@@ -10,9 +10,61 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const now = new Date();
+
+    // Clean up any expired rooms of this host first
+    const expiredRooms = await prisma.room.findMany({
+      where: {
+        hostId: session.user.id,
+        expiresAt: {
+          lte: now,
+        },
+      },
+      include: {
+        callSessions: {
+          include: {
+            recordings: true,
+          },
+        },
+      },
+    });
+
+    if (expiredRooms.length > 0) {
+      const fileUrls: string[] = [];
+      expiredRooms.forEach((room) => {
+        room.callSessions.forEach((sess) => {
+          sess.recordings.forEach((rec) => {
+            if (rec.fileUrl) {
+              fileUrls.push(rec.fileUrl);
+            }
+          });
+        });
+      });
+
+      if (fileUrls.length > 0) {
+        try {
+          await supabase.storage.from(SUPABASE_BUCKET_NAME).remove(fileUrls);
+        } catch (err) {
+          console.error("Failed to delete expired files from Supabase Storage:", err);
+        }
+      }
+
+      await prisma.room.deleteMany({
+        where: {
+          id: {
+            in: expiredRooms.map((r) => r.id),
+          },
+        },
+      });
+    }
+
     const rooms = await prisma.room.findMany({
       where: {
         hostId: session.user.id,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } }
+        ]
       },
       include: {
         callSessions: {
