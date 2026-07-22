@@ -30,28 +30,24 @@ function VideoPanel({
   }, [stream]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-xl transition-all duration-300">
-      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3 bg-zinc-900/60 backdrop-blur-md">
-        <p className="text-sm font-semibold text-zinc-200">{label}</p>
-        <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-red-500 bg-red-500/10 border border-red-500/20 px-2.5 py-0.5 rounded-full">
-          {stream ? "Live" : "Pending"}
-        </span>
-      </div>
+    <div className="relative w-full h-full rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 shadow-lg group transition-all duration-300">
+      {stream ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted={muted}
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-zinc-500 font-medium">
+          {placeholder}
+        </div>
+      )}
 
-      <div className="relative aspect-video bg-zinc-950">
-        {stream ? (
-          <video
-            ref={videoRef}
-            autoPlay
-            muted={muted}
-            playsInline
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
-            {placeholder}
-          </div>
-        )}
+      {/* Nametag Overlay */}
+      <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-semibold text-white z-10 border border-white/5">
+        {label}
       </div>
     </div>
   );
@@ -60,27 +56,29 @@ function VideoPanel({
 export function VideoGrid({ localStream, remoteStreams, peerNames }: VideoGridProps) {
   const totalCount = 1 + remoteStreams.size;
 
-  // Determine grid columns dynamically based on total participant count
-  let gridLayout = "grid-cols-1 max-w-3xl";
+  // Determine Riverside.fm style grids based on total participant count
+  let gridLayout = "grid-cols-1";
   if (totalCount === 2) {
-    gridLayout = "grid-cols-1 md:grid-cols-2 max-w-5xl";
-  } else if (totalCount >= 3 && totalCount <= 4) {
-    gridLayout = "grid-cols-2 max-w-5xl";
+    gridLayout = "grid-cols-2";
+  } else if (totalCount === 3) {
+    gridLayout = "grid-cols-3";
+  } else if (totalCount === 4) {
+    gridLayout = "grid-cols-2 grid-rows-2";
   } else if (totalCount >= 5) {
-    gridLayout = "grid-cols-2 md:grid-cols-3 max-w-6xl";
+    gridLayout = "grid-cols-3 grid-rows-2";
   }
 
   // Convert remoteStreams map entries to a readable array
   const remoteEntries = Array.from(remoteStreams.entries());
 
   return (
-    <section className={`grid gap-6 w-full mx-auto transition-all duration-500 ${gridLayout}`}>
+    <section className={`grid gap-4 w-full h-full ${gridLayout}`}>
       {/* Local Video panel */}
       <VideoPanel
         label="You"
         stream={localStream}
         muted
-        placeholder="Requesting media tracks..."
+        placeholder="Connecting to media devices..."
       />
 
       {/* Remote Video panels */}
@@ -91,7 +89,7 @@ export function VideoGrid({ localStream, remoteStreams, peerNames }: VideoGridPr
             key={peerSocketId}
             label={username}
             stream={stream}
-            placeholder={`Awaiting track transmission from ${username}...`}
+            placeholder={`Awaiting track from ${username}...`}
           />
         );
       })}

@@ -3,9 +3,20 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, Share2, Mail, Loader2, Copy, Check, ShieldAlert } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Users, 
+  Mail, 
+  Loader2, 
+  ShieldAlert, 
+  Mic, 
+  MicOff, 
+  Video as VideoIcon, 
+  VideoOff, 
+  PhoneOff,
+  Disc
+} from "lucide-react";
 
-import { RecordButton } from "@/components/RecordButton";
 import { VideoGrid } from "@/components/VideoGrid";
 import { useRecorder } from "@/hooks/useRecorder";
 import { useWebRTC } from "@/hooks/useWebRTC";
@@ -54,7 +65,6 @@ export default function RoomPage() {
   // Lobby/Guest States
   const [hasEnteredLobby, setHasEnteredLobby] = useState(false);
   const [guestName, setGuestName] = useState("");
-  const [copied, setCopied] = useState(false);
 
   // Invite States
   const [inviteEmail, setInviteEmail] = useState("");
@@ -160,13 +170,6 @@ export default function RoomPage() {
     setHasEnteredLobby(true);
   };
 
-  const handleCopyLink = () => {
-    const inviteUrl = `${window.location.origin}/room/${roomId}`;
-    navigator.clipboard.writeText(inviteUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleInviteMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
@@ -182,20 +185,36 @@ export default function RoomPage() {
       if (!res.ok) {
         setInviteMessage({ text: data.error || "Failed to send invite", type: "error" });
       } else {
-        setInviteMessage({ text: "Invite sent successfully!", type: "success" });
+        setInviteMessage({ text: "Invite sent!", type: "success" });
         setInviteEmail("");
         if (data.invitation) {
           notifyInvite(data.invitation.inviteeEmail, data.invitation);
         }
       }
     } catch (err) {
-      setInviteMessage({ text: "An unexpected error occurred.", type: "error" });
+      setInviteMessage({ text: "Error sending invite.", type: "error" });
     } finally {
       setIsInviting(false);
     }
   };
 
-  // If Guest hasn't clicked 'Join Studio', show Lobby/Preview View
+  const handleLeaveCall = () => {
+    if (
+      isHost &&
+      (recordingStatus === "recording" || recordingStatus === "uploading")
+    ) {
+      if (
+        !window.confirm(
+          "A recording is currently in progress or uploading. If you leave now, the recording might be lost. Are you sure you want to leave?"
+        )
+      ) {
+        return;
+      }
+    }
+    router.push("/dashboard");
+  };
+
+  // 1. Lobby/Preview State: standard padded centering
   if (!hasEnteredLobby) {
     return (
       <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-950 px-6 py-12 selection:bg-red-500/30 selection:text-white">
@@ -267,133 +286,141 @@ export default function RoomPage() {
     );
   }
 
-  // Room view
+  const totalParticipants = 1 + remoteStreams.size;
+
+  // 2. Overhauled Studio Session View: exactly 100vh, absolute overflow-hidden
   return (
-    <main className="min-h-screen bg-zinc-950 px-6 py-8 text-zinc-100 selection:bg-red-500/30 selection:text-white">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6">
-        
-        {/* Top Control Panel */}
-        <div className="flex flex-col gap-4 rounded-3xl border border-zinc-800/80 bg-zinc-900/60 p-5 sm:flex-row sm:items-start sm:justify-between backdrop-blur-md">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-500">
-              Studio Session
-            </p>
-            <h1 className="mt-1 text-2xl font-bold text-white tracking-tight">{roomName}</h1>
-            <p className="mt-2 text-xs text-zinc-400">
-              {roomFull ? "This room is full." : `Active Peers: ${1 + remoteStreams.size}`}
-            </p>
-            {webrtcError ? (
-              <p className="mt-2 text-xs text-red-400 flex items-center gap-1">
-                <ShieldAlert className="w-3.5 h-3.5" />
-                {webrtcError}
-              </p>
-            ) : null}
+    <main className="h-screen w-full flex flex-col overflow-hidden bg-zinc-950 text-white select-none">
+      
+      {/* Dynamic Header Bar */}
+      <header className="flex items-center justify-between px-6 py-4 border-b border-white/5 h-16 shrink-0 bg-zinc-950/80 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="border border-white/10 rounded-lg px-2.5 py-1">
+            <span className="font-semibold text-xs tracking-tight text-white flex items-center gap-1.5">
+              Podium
+              <span className="flex h-1.5 w-1.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
+              </span>
+            </span>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {/* ONLY the host gets access to recording actions. Guests do not see recording info. */}
-            {isHost && (
-              <RecordButton
-                recordingStatus={recordingStatus}
-                error={recorderError}
-                uploadedKey={uploadedKey}
-                onStart={handleHostStart}
-                onStop={handleHostStop}
-              />
-            )}
-            
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-xs font-semibold text-zinc-300 transition hover:border-zinc-700 hover:bg-zinc-800 flex items-center gap-1.5"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Copy Invite Link</span>
-                </>
-              )}
-            </button>
-
-            {isHost && (
-              <form onSubmit={handleInviteMember} className="relative flex items-center">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="Invite by email..."
-                  className="w-48 rounded-l-xl border border-r-0 border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-white outline-none transition focus:border-red-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isInviting || !inviteEmail.trim()}
-                  className="rounded-r-xl border border-l-0 border-red-500 bg-red-500/10 px-3.5 py-2 text-xs font-bold text-red-400 transition hover:bg-red-500 hover:text-white disabled:opacity-50 flex items-center gap-1"
-                >
-                  <Mail className="w-3 h-3" />
-                  <span>{isInviting ? "..." : "Send"}</span>
-                </button>
-                {inviteMessage && (
-                  <div className={`absolute -bottom-6 left-0 text-[10px] font-semibold ${inviteMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
-                    {inviteMessage.text}
-                  </div>
-                )}
-              </form>
-            )}
-
-            <button
-              type="button"
-              onClick={toggleMic}
-              disabled={!localStream}
-              className="rounded-xl border border-zinc-800 px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:border-zinc-700 transition"
-            >
-              {isMicEnabled ? "Mute Mic" : "Unmute Mic"}
-            </button>
-            <button
-              type="button"
-              onClick={toggleCamera}
-              disabled={!localStream}
-              className="rounded-xl border border-zinc-800 px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:border-zinc-700 transition"
-            >
-              {isCameraEnabled ? "Turn Camera Off" : "Turn Camera On"}
-            </button>
-            
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  isHost &&
-                  (recordingStatus === "recording" || recordingStatus === "uploading")
-                ) {
-                  if (
-                    !window.confirm(
-                      "A recording is currently in progress or uploading. If you leave now, the recording might be lost. Are you sure you want to leave?"
-                    )
-                  ) {
-                    return;
-                  }
-                }
-                router.push("/dashboard");
-              }}
-              className="rounded-xl bg-zinc-100 hover:bg-white px-4 py-2.5 text-xs font-semibold text-zinc-950 transition flex items-center gap-1"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Leave Room
-            </button>
+          
+          {/* Participant Count Pill */}
+          <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-300 font-semibold">
+            <Users className="w-3.5 h-3.5 text-zinc-400" />
+            <span>{totalParticipants}</span>
           </div>
         </div>
 
-        {/* Upgraded Video Grid: dynamic multiple peers layout */}
+        {/* Right Section (Invite Input Box) */}
+        <div className="flex items-center gap-3">
+          {isHost && (
+            <form onSubmit={handleInviteMember} className="relative flex items-center gap-2">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Invite via email..."
+                className="bg-zinc-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs w-64 focus:border-red-500 outline-none placeholder:text-zinc-500 text-white transition-all"
+              />
+              <button
+                type="submit"
+                disabled={isInviting || !inviteEmail.trim()}
+                className="bg-white/10 hover:bg-white/20 text-white text-xs px-4 py-1.5 rounded-lg transition-all font-semibold disabled:opacity-50 shrink-0"
+              >
+                {isInviting ? "..." : "Send"}
+              </button>
+              {inviteMessage && (
+                <span className={`absolute right-0 top-full mt-1 text-[10px] font-bold ${inviteMessage.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                  {inviteMessage.text}
+                </span>
+              )}
+            </form>
+          )}
+
+          {webrtcError && (
+            <div className="text-xs text-red-400 flex items-center gap-1 bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>{webrtcError}</span>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Dynamic Video Grid (Stage) */}
+      <section className="flex-1 p-4 md:p-6 min-h-0 w-full h-full overflow-hidden bg-zinc-950/20">
         <VideoGrid 
           localStream={localStream} 
           remoteStreams={remoteStreams} 
           peerNames={peerNames} 
         />
-      </div>
+      </section>
+
+      {/* Bottom Control Bar */}
+      <footer className="grid grid-cols-3 items-center px-6 py-4 bg-zinc-950 border-t border-white/5 h-20 shrink-0">
+        
+        {/* Left Side spacer */}
+        <div />
+
+        {/* Center Control Buttons */}
+        <div className="flex items-center justify-center gap-4">
+          
+          {/* Record button (Host only) */}
+          {isHost && (
+            <button
+              onClick={recordingStatus === "recording" ? handleHostStop : handleHostStart}
+              className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-lg select-none ${
+                recordingStatus === "recording"
+                  ? "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                  : "bg-red-500 hover:bg-red-600 text-white shadow-red-500/20"
+              }`}
+            >
+              <Disc className="w-4.5 h-4.5" />
+              <span>{recordingStatus === "recording" ? "STOP RECORDING" : "START RECORDING"}</span>
+            </button>
+          )}
+
+          {/* Toggle Mic */}
+          <button
+            onClick={toggleMic}
+            className={`p-3 rounded-full transition-all duration-300 border ${
+              isMicEnabled
+                ? "bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700/60"
+                : "bg-red-500/20 text-red-500 border-red-500/30"
+            }`}
+            title={isMicEnabled ? "Mute Mic" : "Unmute Mic"}
+          >
+            {isMicEnabled ? <Mic className="w-4.5 h-4.5" /> : <MicOff className="w-4.5 h-4.5" />}
+          </button>
+
+          {/* Toggle Camera */}
+          <button
+            onClick={toggleCamera}
+            className={`p-3 rounded-full transition-all duration-300 border ${
+              isCameraEnabled
+                ? "bg-zinc-800 hover:bg-zinc-700 text-white border-zinc-700/60"
+                : "bg-red-500/20 text-red-500 border-red-500/30"
+            }`}
+            title={isCameraEnabled ? "Turn Camera Off" : "Turn Camera On"}
+          >
+            {isCameraEnabled ? <VideoIcon className="w-4.5 h-4.5" /> : <VideoOff className="w-4.5 h-4.5" />}
+          </button>
+
+        </div>
+
+        {/* Right Side Leave button */}
+        <div className="flex justify-end">
+          <button
+            onClick={handleLeaveCall}
+            className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-5 py-2.5 rounded-full text-xs font-semibold transition-all duration-300 flex items-center gap-1.5"
+          >
+            <PhoneOff className="w-3.5 h-3.5" />
+            <span>Leave Call</span>
+          </button>
+        </div>
+
+      </footer>
+
     </main>
   );
 }
