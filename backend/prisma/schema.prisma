@@ -71,6 +71,7 @@ model Room {
   host         User          @relation("HostRooms", fields: [hostId], references: [id])
   hostId       String
   expiresAt    DateTime?
+  createdAt    DateTime      @default(now())
   callSessions CallSession[]
   invitations  Invitation[]
 }

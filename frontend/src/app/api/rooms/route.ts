@@ -12,13 +12,23 @@ export async function GET() {
 
     const now = new Date();
 
-    // Clean up any expired rooms of this host first
+    // 1. Clean up rooms whose expiresAt has passed, OR never-joined rooms older than 2 hours
     const expiredRooms = await prisma.room.findMany({
       where: {
         hostId: session.user.id,
-        expiresAt: {
-          lte: now,
-        },
+        OR: [
+          {
+            expiresAt: {
+              lte: now,
+            },
+          },
+          {
+            expiresAt: null,
+            createdAt: {
+              lte: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2 hours of inactivity for never-joined rooms
+            },
+          },
+        ],
       },
       include: {
         callSessions: {
@@ -29,9 +39,34 @@ export async function GET() {
       },
     });
 
-    if (expiredRooms.length > 0) {
+    // 2. Also find rooms where expiresAt is null but they have been used in the past,
+    // and the last session was created more than 1 hour ago (meaning they were used and left).
+    const activeRoomsWithSessions = await prisma.room.findMany({
+      where: {
+        hostId: session.user.id,
+        expiresAt: null,
+      },
+      include: {
+        callSessions: {
+          include: {
+            recordings: true,
+          },
+        },
+      },
+    });
+
+    const usedAndLeftRooms = activeRoomsWithSessions.filter((room) => {
+      if (room.callSessions.length === 0) return false;
+      const sorted = [...room.callSessions].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const lastSessionTime = sorted[0].createdAt;
+      return new Date(lastSessionTime.getTime() + 60 * 60 * 1000) <= now;
+    });
+
+    const allExpiredRooms = [...expiredRooms, ...usedAndLeftRooms];
+
+    if (allExpiredRooms.length > 0) {
       const fileUrls: string[] = [];
-      expiredRooms.forEach((room) => {
+      allExpiredRooms.forEach((room) => {
         room.callSessions.forEach((sess) => {
           sess.recordings.forEach((rec) => {
             if (rec.fileUrl) {
@@ -52,19 +87,20 @@ export async function GET() {
       await prisma.room.deleteMany({
         where: {
           id: {
-            in: expiredRooms.map((r) => r.id),
+            in: allExpiredRooms.map((r) => r.id),
           },
         },
       });
     }
 
+    // Only show rooms in "Your Studios" that have been left (expiresAt is not null) and have not expired yet
     const rooms = await prisma.room.findMany({
       where: {
         hostId: session.user.id,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } }
-        ]
+        expiresAt: {
+          not: null,
+          gt: now,
+        },
       },
       include: {
         callSessions: {

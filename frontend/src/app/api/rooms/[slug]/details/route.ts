@@ -25,7 +25,25 @@ export async function GET(
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
     }
 
-    if (room.expiresAt && room.expiresAt <= new Date()) {
+    let isExpired = false;
+    const now = new Date();
+    if (room.expiresAt && room.expiresAt <= now) {
+      isExpired = true;
+    } else if (!room.expiresAt) {
+      if (room.createdAt <= new Date(now.getTime() - 2 * 60 * 60 * 1000)) {
+        isExpired = true;
+      } else {
+        const callSessions = await prisma.callSession.findMany({
+          where: { roomId: room.id },
+          orderBy: { createdAt: "desc" }
+        });
+        if (callSessions.length > 0 && new Date(callSessions[0].createdAt.getTime() + 60 * 60 * 1000) <= now) {
+          isExpired = true;
+        }
+      }
+    }
+
+    if (isExpired) {
       const fileUrls: string[] = [];
       const callSessions = await prisma.callSession.findMany({
         where: { roomId: room.id },

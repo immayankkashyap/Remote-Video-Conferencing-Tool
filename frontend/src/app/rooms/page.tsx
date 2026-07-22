@@ -1,26 +1,16 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
 import { useSession, signIn } from "next-auth/react";
-import { 
-  Play, 
-  Download, 
-  User, 
-  Mail, 
-  Lock, 
-  Loader2, 
-  Calendar,
-  Plus,
-  Tv
-} from "lucide-react";
+import { Loader2, Plus, ArrowRight, User, Mail, Lock } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 
-export default function LobbyPage() {
+export default function RoomsPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
 
-  // Credentials Auth States
+  // Credentials Auth States (For unauthenticated visitors)
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -30,15 +20,16 @@ export default function LobbyPage() {
   const [authSuccess, setAuthSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Dashboard States
+  // Active Session Manager States
+  const [newStudioName, setNewStudioName] = useState("");
+  const [isCreatingStudio, setIsCreatingStudio] = useState(false);
   const [rooms, setRooms] = useState<any[]>([]);
   const [isFetchingRooms, setIsFetchingRooms] = useState(false);
-  const [showAllRecordings, setShowAllRecordings] = useState(false);
 
   const isAuthenticated = status === "authenticated";
   const isLoading = status === "loading";
 
-  // Fetch past recordings from rooms
+  // Fetch previous rooms (which have been left but are not expired yet)
   useEffect(() => {
     if (isAuthenticated && session?.user?.email) {
       setIsFetchingRooms(true);
@@ -94,21 +85,29 @@ export default function LobbyPage() {
     }
   };
 
-  const allRecordings = rooms
-    .flatMap((room) =>
-      (room.callSessions || []).flatMap((session: any) =>
-        (session.recordings || []).map((rec: any) => ({
-          ...rec,
-          roomName: room.name,
-          date: session.createdAt,
-        }))
-      )
-    )
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const handleCreateStudio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStudioName.trim()) return;
+    setIsCreatingStudio(true);
+    try {
+      const res = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newStudioName }),
+      });
+      const data = await res.json();
+      if (data.room) {
+        // Immediately redirect to room slug page
+        router.push(`/room/${data.room.slug}`);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCreatingStudio(false);
+    }
+  };
 
-  const displayedRecordings = showAllRecordings ? allRecordings : allRecordings.slice(0, 10);
-
-  // If loading session state, show modern loader spinner
+  // If loading session state
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
@@ -273,132 +272,112 @@ export default function LobbyPage() {
     );
   }
 
-  // Authenticated State (Overhauled Dashboard View)
+  // Authenticated State (Rooms list and creation Manager)
   return (
     <div className="min-h-screen bg-zinc-950 text-white selection:bg-red-500/30 selection:text-white font-sans antialiased overflow-x-hidden flex flex-col">
       {/* Shared sticky navigation bar */}
       <Navbar />
 
-      {/* Main Recordings Hub Content */}
-      <main className="relative z-10 max-w-7xl w-full mx-auto px-6 py-12 flex-1">
+      {/* Main Rooms Page Content */}
+      <main className="relative z-10 max-w-4xl w-full mx-auto px-6 py-12 flex-1">
         
-        {/* Top Header Section */}
-        <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-4xl font-bold text-white tracking-tight leading-tight">
-              Welcome {session?.user?.name || "Mayank"}
-            </h1>
-            <p className="text-zinc-500 text-xs mt-1 uppercase tracking-widest font-semibold">
-              Manage and download your remote local tracks
-            </p>
-          </div>
+        {/* Page Titles */}
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white leading-tight">
+            Active Session Manager
+          </h1>
+          <p className="text-zinc-500 text-xs mt-1 uppercase tracking-widest font-semibold">
+            Create brand new studios or rejoin left conference rooms
+          </p>
+        </div>
 
-          <button
-            onClick={() => router.push("/rooms")}
-            className="border border-white/20 hover:border-red-500 bg-zinc-900/50 hover:bg-red-500/10 text-white rounded-xl px-6 py-3 font-semibold text-sm transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-red-550/5 active:scale-95 shrink-0"
+        {/* Room Creation Bar */}
+        <section className="mt-10">
+          <form 
+            onSubmit={handleCreateStudio} 
+            className="w-full flex flex-col sm:flex-row gap-4 items-center bg-zinc-900/10 border border-white/5 p-2 rounded-2xl backdrop-blur-md"
           >
-            <Plus className="w-4.5 h-4.5 text-red-500" />
-            Create New room
-          </button>
+            <input
+              type="text"
+              required
+              value={newStudioName}
+              onChange={(e) => setNewStudioName(e.target.value)}
+              placeholder="PUT YOUR ROOM NAME HERE"
+              className="flex-1 bg-zinc-900 border border-white/10 text-white text-sm rounded-xl px-5 py-4 w-full focus:border-red-500 focus:outline-none transition-all outline-none"
+            />
+            
+            <button
+              type="submit"
+              disabled={isCreatingStudio || !newStudioName.trim()}
+              className="bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl px-8 py-4 whitespace-nowrap shadow-lg shadow-red-500/20 transition-all flex items-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-55"
+            >
+              {isCreatingStudio ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>CREATING...</span>
+                </>
+              ) : (
+                <>
+                  <span>CREATE NEW ROOM</span>
+                  <Plus className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
         </section>
 
-        {/* Recordings Container Card */}
-        <section className="border border-white/10 rounded-3xl p-6 mt-8 bg-zinc-900/20 backdrop-blur-md">
-          
-          {/* Header inside container */}
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4 mb-6">
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              Your Recordings
+        {/* Recent Rooms List */}
+        <section className="mt-12">
+          <div className="flex items-center gap-2 mb-6 border-b border-zinc-800/80 pb-3">
+            <h2 className="text-base font-bold text-white tracking-tight">
+              Recent Rooms
             </h2>
-            
-            {allRecordings.length > 10 && (
-              <button
-                onClick={() => setShowAllRecordings(!showAllRecordings)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold px-4 py-1.5 rounded-full text-xs transition-colors"
-              >
-                {showAllRecordings ? "Show Less" : "View all"}
-              </button>
-            )}
+            <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-full font-mono">
+              {rooms.length}
+            </span>
           </div>
 
-          {/* Recordings grid */}
           {isFetchingRooms ? (
-            <div className="flex justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-red-500" />
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-red-500" />
             </div>
-          ) : allRecordings.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-              <div className="h-14 w-14 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center mb-4 text-zinc-500">
-                <Tv className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-semibold text-zinc-300">No session recordings found</h3>
-              <p className="mt-1.5 text-xs text-zinc-500 max-w-sm leading-relaxed">
-                Connect and record uncompressed 4K tracks in active rooms to see recordings here.
-              </p>
+          ) : rooms.length === 0 ? (
+            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/10 border-dashed py-12 text-center">
+              <p className="text-xs text-zinc-500">You don't have any recent studios available to rejoin.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
-              {displayedRecordings.map((rec: any) => (
+            <div className="flex flex-col gap-3">
+              {rooms.map((room) => (
                 <div 
-                  key={rec.id} 
-                  className="bg-zinc-900/40 border border-white/10 rounded-2xl overflow-hidden hover:border-zinc-700 transition-all duration-300 flex flex-col group"
+                  key={room.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900/30 border border-white/5 rounded-xl p-4 hover:bg-zinc-900/60 hover:border-zinc-800 transition-all duration-300"
                 >
-                  {/* Aspect-Video Thumbnail */}
-                  <a 
-                    href={`/api/recordings/${rec.id}/download`} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="relative w-full aspect-video bg-zinc-950 overflow-hidden block"
-                  >
-                    <video
-                      src={`/api/recordings/${rec.id}/download`}
-                      preload="metadata"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(e) => {
-                        (e.target as HTMLVideoElement).style.display = 'none';
-                      }}
-                    />
-                    
-                    {/* Centered subtle play icon overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                      <div className="w-10 h-10 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-all duration-300">
-                        <Play className="w-4 h-4 fill-current" />
-                      </div>
-                    </div>
-                  </a>
-
-                  {/* Video Details */}
-                  <div className="p-3 border-t border-white/10 flex flex-col justify-between flex-1 gap-2">
-                    <div>
-                      <h4 className="font-semibold text-zinc-200 text-xs truncate group-hover:text-white transition-colors" title={rec.roomName}>
-                        {rec.roomName}
-                      </h4>
-                      <p className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1 font-mono">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(rec.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-zinc-800/40 pt-2 gap-2">
-                      <span className="text-[9px] text-zinc-400 bg-zinc-850/80 px-2 py-0.5 rounded truncate max-w-[90px]" title={`Participant: ${rec.participantName}`}>
-                        {rec.participantName}
-                      </span>
-                      
-                      <a
-                        href={`/api/recordings/${rec.id}/download?action=download`}
-                        className="p-1.5 rounded-lg bg-zinc-850 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition-all"
-                        title="Download Recording"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-white font-mono tracking-wide">
+                      {room.slug}
+                    </span>
+                    <span className="text-[11px] text-zinc-500 mt-0.5">
+                      Room code identifier
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs text-zinc-400 font-semibold truncate max-w-[200px]" title={room.name}>
+                      {room.name}
+                    </span>
                   </div>
 
+                  <button
+                    onClick={() => router.push(`/room/${room.slug}`)}
+                    className="border border-white/20 hover:border-red-500 bg-zinc-950/20 hover:bg-red-500/10 text-white text-xs px-5 py-2 rounded-full font-bold transition-all flex items-center gap-1 shrink-0 self-start sm:self-center"
+                  >
+                    <span>Rejoin</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-red-500" />
+                  </button>
                 </div>
               ))}
             </div>
           )}
-
         </section>
 
       </main>

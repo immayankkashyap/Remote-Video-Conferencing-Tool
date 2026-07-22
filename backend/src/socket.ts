@@ -93,52 +93,45 @@ export const initSocket = (server: http.Server) => {
 
       const members = rooms.get(roomId) || [];
 
-      if (members.length >= 2) {
+      if (members.length >= 6) {
         console.log(`[socket] room-full for room ${roomId}; rejecting ${socket.id}`);
         socket.emit("room-full", { roomId });
         return;
       }
 
+      const existingPeers = members.map((memberId) => ({
+        id: memberId,
+        username: socketToUsername.get(memberId) || "Guest",
+      }));
+
       if (!members.includes(socket.id)) {
         members.push(socket.id);
       }
 
-        rooms.set(roomId, members);
-        socketToRoom.set(socket.id, roomId);
-        socket.join(roomId);
+      rooms.set(roomId, members);
+      socketToRoom.set(socket.id, roomId);
+      socket.join(roomId);
 
-        // Clear expiresAt when someone joins/uses the room
-        prisma.room.update({
-          where: { slug: roomId },
-          data: { expiresAt: null }
-        }).catch(err => {
-          console.error(`[socket] failed to clear expiresAt for room ${roomId}:`, err);
-        });
+      // Clear expiresAt when someone joins/uses the room
+      prisma.room.update({
+        where: { slug: roomId },
+        data: { expiresAt: null }
+      }).catch(err => {
+        console.error(`[socket] failed to clear expiresAt for room ${roomId}:`, err);
+      });
 
-        console.log(
-          `[socket] room ${roomId} members after join: ${members.join(", ") || "(empty)"}`,
-        );
+      console.log(
+        `[socket] room ${roomId} members after join: ${members.join(", ") || "(empty)"}`,
+      );
 
-        if (members.length === 2) {
-          const existingPeerId = members.find((memberId) => memberId !== socket.id);
+      // Send the list of existing peers to the new joiner
+      socket.emit("all-peers", { peers: existingPeers });
 
-          if (existingPeerId) {
-            const existingPeerUsername = socketToUsername.get(existingPeerId) || "Guest";
-            console.log(
-              `[socket] notifying ${existingPeerId} that ${socket.id} (${username || "Guest"}) joined room ${roomId}`,
-            );
-            // Notify existing peer of new peer's info
-            io.to(existingPeerId).emit("user-joined", {
-              id: socket.id,
-              username: username || "Guest",
-            });
-            // Notify joining peer of existing peer's info
-            socket.emit("peer-info", {
-              id: existingPeerId,
-              username: existingPeerUsername,
-            });
-          }
-        }
+      // Notify all existing peers in the room that a new user has joined
+      socket.to(roomId).emit("user-joined", {
+        id: socket.id,
+        username: username || "Guest",
+      });
       });
 
     socket.on("signal", ({ to, data }: SignalPayload) => {
